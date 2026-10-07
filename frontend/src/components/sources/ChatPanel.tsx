@@ -53,6 +53,8 @@ interface ChatPanelProps {
   notebookContextStats?: NotebookContextStats
   // Notebook ID for saving notes
   notebookId?: string
+  // Use plain Enter to send for notebook-level chat only
+  sendOnEnter?: boolean
 }
 
 export function ChatPanel({
@@ -72,7 +74,8 @@ export function ChatPanel({
   title,
   contextType = 'source',
   notebookContextStats,
-  notebookId
+  notebookId,
+  sendOnEnter = false
 }: ChatPanelProps) {
   const { t } = useTranslation()
   const [sessionManagerOpen, setSessionManagerOpen] = useState(false)
@@ -221,6 +224,7 @@ export function ChatPanel({
           isStreaming={isStreaming}
           modelOverride={modelOverride}
           onModelChange={onModelChange}
+          sendOnEnter={sendOnEnter}
         />
       </CardContent>
     </Card>
@@ -236,13 +240,15 @@ interface ChatComposerProps {
   isStreaming: boolean
   modelOverride?: string
   onModelChange?: (model?: string) => void
+  sendOnEnter: boolean
 }
 
 function ChatComposer({
   onSendMessage,
   isStreaming,
   modelOverride,
-  onModelChange
+  onModelChange,
+  sendOnEnter
 }: ChatComposerProps) {
   const { t } = useTranslation()
   const chatInputId = useId()
@@ -256,19 +262,26 @@ function ChatComposer({
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    // Detect platform for correct modifier key
+    if (sendOnEnter) {
+      // Notebook chat: plain Enter sends; modified Enter inserts a newline.
+      if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault()
+        handleSend()
+      }
+      return
+    }
+
+    // Preserve the existing modifier-to-send behavior for source chat.
     const isMac = typeof navigator !== 'undefined' && navigator.userAgent.toUpperCase().indexOf('MAC') >= 0
     const isModifierPressed = isMac ? e.metaKey : e.ctrlKey
-
     if (e.key === 'Enter' && isModifierPressed) {
       e.preventDefault()
       handleSend()
     }
   }
 
-  // Detect platform for placeholder text
   const isMac = typeof navigator !== 'undefined' && navigator.userAgent.toUpperCase().indexOf('MAC') >= 0
-  const keyHint = isMac ? '⌘+Enter' : 'Ctrl+Enter'
+  const keyHint = sendOnEnter ? 'Enter' : isMac ? '⌘+Enter' : 'Ctrl+Enter'
 
   return (
     <div className="flex-shrink-0 p-4 space-y-3 border-t">

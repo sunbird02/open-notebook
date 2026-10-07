@@ -15,6 +15,7 @@ vi.mock('@/components/sources/MessageActions', () => ({
 
 describe('ChatPanel composer', () => {
   beforeEach(() => {
+    vi.restoreAllMocks()
     vi.clearAllMocks()
     // jsdom does not implement scrollIntoView (used by the auto-scroll effect).
     window.HTMLElement.prototype.scrollIntoView = vi.fn()
@@ -30,6 +31,7 @@ describe('ChatPanel composer', () => {
         isStreaming={false}
         contextIndicators={null}
         onSendMessage={onSendMessage}
+        sendOnEnter
       />
     )
 
@@ -44,31 +46,8 @@ describe('ChatPanel composer', () => {
     expect(textarea.value).toBe('')
   })
 
-  it('sends on Cmd+Enter on macOS', () => {
-    const uaSpy = vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'
-    )
-    const onSendMessage = vi.fn()
-    render(
-      <ChatPanel
-        messages={[]}
-        isStreaming={false}
-        contextIndicators={null}
-        onSendMessage={onSendMessage}
-      />
-    )
-
-    const textarea = getTextarea()
-    fireEvent.change(textarea, { target: { value: 'via cmd' } })
-    fireEvent.keyDown(textarea, { key: 'Enter', metaKey: true, ctrlKey: false })
-
-    expect(onSendMessage).toHaveBeenCalledWith('via cmd', undefined)
-    expect(textarea.value).toBe('')
-    uaSpy.mockRestore()
-  })
-
-  it('sends on Ctrl+Enter on non-macOS', () => {
-    const uaSpy = vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+  it('sends on plain Enter on Windows', () => {
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
     )
     const onSendMessage = vi.fn()
@@ -78,16 +57,81 @@ describe('ChatPanel composer', () => {
         isStreaming={false}
         contextIndicators={null}
         onSendMessage={onSendMessage}
+        sendOnEnter
+      />
+    )
+
+    const textarea = getTextarea()
+    fireEvent.change(textarea, { target: { value: 'via cmd' } })
+    fireEvent.keyDown(textarea, { key: 'Enter', metaKey: false, ctrlKey: false })
+
+    expect(onSendMessage).toHaveBeenCalledWith('via cmd', undefined)
+    expect(textarea.value).toBe('')
+  })
+
+  it('leaves Ctrl+Enter unhandled so the textarea inserts a newline', () => {
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+    )
+    const onSendMessage = vi.fn()
+    render(
+      <ChatPanel
+        messages={[]}
+        isStreaming={false}
+        contextIndicators={null}
+        onSendMessage={onSendMessage}
+        sendOnEnter
       />
     )
 
     const textarea = getTextarea()
     fireEvent.change(textarea, { target: { value: 'via ctrl' } })
-    fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true, metaKey: false })
+    const notPrevented = fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true, metaKey: false })
 
-    expect(onSendMessage).toHaveBeenCalledWith('via ctrl', undefined)
-    expect(textarea.value).toBe('')
-    uaSpy.mockRestore()
+    expect(onSendMessage).not.toHaveBeenCalled()
+    expect(notPrevented).toBe(true)
+  })
+
+  it('keeps Ctrl+Enter send behavior by default for source chat', () => {
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+    )
+    const onSourceSend = vi.fn()
+    render(
+      <ChatPanel
+        messages={[]}
+        isStreaming={false}
+        contextIndicators={null}
+        onSendMessage={onSourceSend}
+      />
+    )
+
+    const textarea = getTextarea()
+    fireEvent.change(textarea, { target: { value: 'source chat' } })
+    fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true })
+
+    expect(onSourceSend).toHaveBeenCalledWith('source chat', undefined)
+  })
+
+  it('keeps Cmd+Enter send behavior on macOS for source chat', () => {
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'
+    )
+    const onMacSend = vi.fn()
+    render(
+      <ChatPanel
+        messages={[]}
+        isStreaming={false}
+        contextIndicators={null}
+        onSendMessage={onMacSend}
+      />
+    )
+
+    const textarea = getTextarea()
+    fireEvent.change(textarea, { target: { value: 'mac source chat' } })
+    fireEvent.keyDown(textarea, { key: 'Enter', metaKey: true })
+
+    expect(onMacSend).toHaveBeenCalledWith('mac source chat', undefined)
   })
 
   it('does not send while streaming', () => {
@@ -98,12 +142,13 @@ describe('ChatPanel composer', () => {
         isStreaming={true}
         contextIndicators={null}
         onSendMessage={onSendMessage}
+        sendOnEnter
       />
     )
 
     const textarea = getTextarea()
     // Textarea is disabled while streaming, but the guard must also hold.
-    fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true })
+    fireEvent.keyDown(textarea, { key: 'Enter' })
 
     expect(onSendMessage).not.toHaveBeenCalled()
   })
